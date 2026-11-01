@@ -1,0 +1,7 @@
+﻿services:
+  - type: web
+    name: ludo-site
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true
