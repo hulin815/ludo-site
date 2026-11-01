@@ -1,0 +1,180 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1524" />
+    <title>飞行棋</title>
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2.6 20 20l-8-4.4L4 20 12 2.6Z" fill="currentColor" />
+        </svg>
+        飞行棋
+      </div>
+      <button class="code-chip" id="code" hidden title="复制房间号">#----</button>
+      <div class="grow"></div>
+      <div class="net" id="net"><i></i><span id="net-text">连接中</span></div>
+      <button class="icon-btn" id="settings-btn" title="设置" aria-label="设置">⚙</button>
+    </header>
+
+    <main class="stage">
+      <section class="lobby" id="lobby">
+        <h1>飞行棋</h1>
+        <p class="lead" id="tagline">四个人、一副骰子、一条跑道。掷 6 才能起飞。</p>
+        <label class="field">
+          <span id="label-name">昵称</span>
+          <input type="text" id="name" maxlength="14" placeholder="给自己起个名字" autocomplete="off" />
+        </label>
+        <div class="row">
+          <button class="btn primary" id="create">创建房间</button>
+          <button class="btn" id="refresh">刷新</button>
+        </div>
+        <div class="row">
+          <input type="text" id="join-code" class="input code-input" maxlength="8" placeholder="房间号" autocomplete="off" />
+          <button class="btn" id="join">加入</button>
+        </div>
+        <div class="share">
+          <span id="share-hint">让朋友打开这个地址</span>
+          <b id="share-url"></b>
+          <button class="btn tiny" id="copy-url">复制</button>
+        </div>
+        <div class="rooms-head"><span id="label-rooms">房间列表</span> <span id="rooms-count">(0)</span></div>
+        <div class="rooms" id="rooms"></div>
+      </section>
+
+      <section class="game" id="game" hidden>
+        <div class="editor" id="editor" hidden>
+          <button type="button" class="chip" id="editor-toggle">编辑棋盘</button>
+          <button type="button" class="chip" data-mode="color">颜色</button>
+          <button type="button" class="chip" data-mode="safe">安全格</button>
+          <button type="button" class="chip" data-mode="flight">飞行格</button>
+          <button type="button" class="chip" data-mode="start">起飞点</button>
+          <span class="editor-colors" id="editor-colors"></span>
+          <button type="button" class="chip" id="editor-done">完成</button>
+        </div>
+        <div class="board-wrap" id="board-wrap">
+          <svg id="board" viewBox="-40 -40 680 680" role="img" aria-label="飞行棋棋盘"></svg>
+          <div class="banner" id="banner" hidden></div>
+        </div>
+        <aside class="side">
+          <div class="side-head">
+            <b id="label-seats">座位</b>
+            <span class="row">
+              <button class="btn tiny" id="leave">离开房间</button>
+            </span>
+          </div>
+          <div class="seats" id="seats"></div>
+          <div class="turn" id="turn"></div>
+          <div class="feed" id="feed"></div>
+          <div class="quick" id="quick"></div>
+          <div class="quick reactions" id="reactions"></div>
+          <form class="chat" id="chat">
+            <button type="button" class="btn tiny mic" id="voice-btn" title="按住说话" aria-label="按住说话">🎤</button>
+            <input type="text" id="chat-input" maxlength="180" placeholder="说点什么…" autocomplete="off" />
+            <button class="btn" type="submit" id="chat-send">发送</button>
+          </form>
+          <div class="voice-state" id="voice-state" hidden></div>
+        </aside>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+    <div id="boot-note" hidden></div>
+
+    <script>
+      ;(function () {
+        var note = document.getElementById('boot-note')
+        function show(text) {
+          if (!note) return
+          note.hidden = false
+          note.textContent = text
+        }
+        window.__ludoReady = false
+        window.addEventListener('error', function (event) {
+          show('页面脚本出错：' + (event.message || '未知错误') + '（把这句发给我）')
+          try {
+            fetch('ludo/api/client-error', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                message: String(event.message || ''),
+                source: String(event.filename || ''),
+                line: event.lineno || 0,
+                ua: navigator.userAgent,
+              }),
+            })
+          } catch (error) {
+            /* ignore */
+          }
+        })
+        window.addEventListener('unhandledrejection', function (event) {
+          show('页面脚本出错：' + String((event && event.reason) || '未知错误'))
+        })
+        setTimeout(function () {
+          if (!window.__ludoReady) {
+            show('脚本没跑起来（可能被浏览器或网络拦了）。当前地址：' + location.href)
+          }
+        }, 6000)
+      })()
+    </script>
+
+    <script type="module" src="./app.js"></script>
+
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheet-card" role="dialog" aria-modal="true" aria-label="设置">
+        <h2 id="label-settings">设置</h2>
+        <div class="setting">
+          <span id="label-anim">动画</span>
+          <button class="switch" id="anim-toggle" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="setting">
+          <span id="label-sound">音效</span>
+          <button class="switch" id="sound-toggle" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="setting">
+          <span id="label-speed">动画速度</span>
+          <div class="seg" id="speed-seg"></div>
+        </div>
+        <div class="setting">
+          <span id="label-theme">配色</span>
+          <div class="seg" id="theme-seg"></div>
+        </div>
+        <button class="btn primary" id="sheet-close">关闭</button>
+      </div>
+    </div>
+    <div class="style-foot" style="text-align:center;padding:10px"><a href="games.html" style="color:var(--accent)">← 回游戏大厅</a></div>
+  <script>
+    // 手机端：第一次点屏幕就尝试全屏并锁横屏（浏览器要求必须先有手势）
+    (function () {
+      if (!('ontouchstart' in window)) return
+      var tried = false
+      window.__goLandscape = function (force) {
+        if (tried && !force) return
+        tried = true
+        var el = document.documentElement
+        var jobs = []
+        try {
+          if (el.requestFullscreen && !document.fullscreenElement) jobs.push(el.requestFullscreen())
+        } catch (error) {}
+        try {
+          if (screen.orientation && screen.orientation.lock) jobs.push(screen.orientation.lock('landscape'))
+        } catch (error) {}
+        if (jobs.length) Promise.all(jobs).catch(function () {})
+      }
+      document.addEventListener('pointerdown', function () { window.__goLandscape(false) }, { once: true })
+    })()
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
