@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>写给你的一个小游戏</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 800px at 50% 0%, #3b1d4a 0%, #1b1030 45%, #0d0a17 100%);
+        color: #ffe9f3;
+        font: 15px/1.7 system-ui, "Microsoft YaHei", sans-serif;
+        overflow-x: hidden;
+        overflow-y: auto;
+        display: grid;
+        place-items: center;
+      }
+      #hearts, .confetti, #falling { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+      .heart { position: absolute; bottom: -40px; font-size: 18px; opacity: 0; animation: float linear forwards; filter: drop-shadow(0 0 6px rgba(255,120,180,.55)); }
+      @keyframes float { 0% { transform: translateY(0) scale(.7); opacity: 0; } 12% { opacity: .9; } 100% { transform: translateY(-105vh) scale(1.15); opacity: 0; } }
+      .stage { position: relative; z-index: 2; width: min(620px, 92vw); padding: 26px 22px 40px; text-align: center; }
+      h1 { font-size: 21px; margin: 0 0 6px; letter-spacing: 1px; cursor: pointer; user-select: none; }
+      p.hint { margin: 0 0 14px; color: #f3cfe4; font-size: 14.5px; min-height: 22px; }
+      .lines { min-height: 120px; display: flex; flex-direction: column; gap: 8px; justify-content: center; align-items: center; }
+      .line { color: #ffeaf5; font-size: 16px; min-height: 24px; }
+      .line.typed::after { content: '▍'; animation: blink 1s steps(1) infinite; color: #ff9ecd; }
+      @keyframes blink { 50% { opacity: 0; } }
+      input {
+        width: 100%; max-width: 260px; padding: 10px 14px; border-radius: 999px;
+        border: 1px solid rgba(255,190,220,.35); background: rgba(255,255,255,.06);
+        color: #fff; font: inherit; text-align: center; outline: none;
+      }
+      input::placeholder { color: rgba(255,220,235,.5); }
+      .row { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 20px; min-height: 52px; }
+      button { font: inherit; padding: 12px 24px; border-radius: 999px; border: 0; cursor: pointer; transition: transform .18s ease, opacity .25s ease; }
+      .yes { background: linear-gradient(135deg, #ff5c9e, #ff2f74); color: #fff; font-weight: 700; box-shadow: 0 8px 26px rgba(255,60,130,.45); animation: beat 1.6s ease-in-out infinite; }
+      @keyframes beat { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      .no { background: rgba(255,255,255,.1); color: #ffd9ea; border: 1px solid rgba(255,190,220,.28); }
+      .ghost { background: transparent; color: #ffc9e0; border: 1px solid rgba(255,190,220,.3); }
+      #result { font-size: 17px; font-weight: 700; color: #fff; margin-top: 14px; min-height: 28px; text-shadow: 0 0 18px rgba(255,90,150,.7); }
+      .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+      .quiz { background: rgba(255,255,255,.06); border: 1px solid rgba(255,190,220,.22); border-radius: 14px; padding: 14px; text-align: left; }
+      .quiz b { display: block; margin-bottom: 8px; color: #fff; font-size: 14.5px; }
+      .quiz button { display: block; width: 100%; text-align: left; padding: 8px 12px; margin: 6px 0; background: rgba(255,255,255,.06); color: #ffe3f0; border-radius: 10px; font-size: 13.5px; }
+      .quiz button.on { background: linear-gradient(135deg, #ff5c9e, #ff2f74); color: #fff; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 14px; }
+      .mem { perspective: 900px; height: 140px; cursor: pointer; }
+      .mem .inner { position: relative; width: 100%; height: 100%; transition: transform .6s; transform-style: preserve-3d; }
+      .mem.open .inner { transform: rotateY(180deg); }
+      .face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 14px; display: grid; place-items: center; padding: 12px; text-align: center; }
+      .front { background: linear-gradient(135deg, rgba(255,92,158,.35), rgba(255,60,120,.18)); border: 1px solid rgba(255,190,220,.35); color: #fff; font-size: 13.5px; }
+      .back { background: rgba(255,255,255,.08); border: 1px solid rgba(255,190,220,.25); transform: rotateY(180deg); color: #ffeaf5; font-size: 13px; line-height: 1.6; }
+      .catch { position: absolute; font-size: 26px; cursor: pointer; pointer-events: auto; animation: drop linear forwards; user-select: none; }
+      @keyframes drop { 0% { transform: translateY(-12vh) rotate(0); } 100% { transform: translateY(110vh) rotate(40deg); } }
+      .score { margin-top: 10px; color: #ffd9ea; font-size: 14px; }
+      .card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,190,220,.25); border-radius: 18px; padding: 20px; text-align: left; margin-top: 16px; }
+      .card h2 { margin: 0 0 10px; font-size: 16px; color: #fff; }
+      .card li { margin: 8px 0; color: #ffe3f0; }
+      .meter { height: 6px; border-radius: 999px; background: rgba(255,255,255,.12); margin: 10px auto 0; max-width: 320px; overflow: hidden; }
+      .meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff5c9e, #ffd166); transition: width .5s ease; }
+      .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: rgba(255,255,255,.14); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .3s ease; z-index: 5; }
+      .toast.on { opacity: 1; }
+      .back { position: fixed; left: 16px; top: 16px; z-index: 3; color: #ffc9e0; text-decoration: none; font-size: 13px; opacity: .8; }
+      .meta { position: fixed; right: 16px; top: 14px; z-index: 3; display: flex; gap: 8px; }
+      .meta button { padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,.08); color: #ffd9ea; border: 1px solid rgba(255,190,220,.25); }
+      .hidden { display: none !important; }
+      .bit { position: absolute; width: 9px; height: 14px; border-radius: 2px; animation: drop linear forwards; }
+      .cat { position: fixed; font-size: 40px; z-index: 6; pointer-events: none; animation: catRun 2.4s ease-in-out forwards; }
+      @keyframes catRun { 0% { left: -60px; opacity: 0; } 15% { opacity: 1; } 100% { left: 105vw; opacity: 1; } }
+    </style>
+  </head>
+  <body>
+    <a class="back" href="./">← 回游戏大厅</a>
+    <div class="meta"><button id="sound">♪ 音乐</button></div>
+    <div id="hearts"></div>
+    <div id="falling"></div>
+
+    <main class="stage">
+      <h1 id="title">有一个小游戏，只想和你一起玩</h1>
+      <p class="hint" id="hint">先告诉我，你叫什么名字？</p>
+
+      <div id="ask" class="row">
+        <input id="name" maxlength="12" placeholder="你的名字" autocomplete="off" />
+        <button class="yes" id="go">开始</button>
+      </div>
+
+      <div class="lines" id="lines"></div>
+      <div class="grid2 hidden" id="quiz"></div>
+      <div class="cards hidden" id="memories"></div>
+      <div class="score hidden" id="score"></div>
+      <div class="meter hidden" id="meter"><i></i></div>
+      <div class="card hidden" id="promise"></div>
+
+      <div class="row hidden" id="choices">
+        <button class="yes" id="yes">好呀 ❤️</button>
+        <button class="no" id="no">再想想…</button>
+      </div>
+
+      <div id="result"></div>
+      <div class="row hidden" id="tail">
+        <button class="ghost" id="copy">复制这段话发给她</button>
+        <button class="ghost" id="again">再看一遍</button>
+      </div>
+    </main>
+    <div class="toast" id="toast"></div>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id)
+      const HEARTS = ['❤️', '💗', '💕', '🌸', '✨', '💞']
+      const params = new URLSearchParams(location.search)
+      let her = params.get('to') || ''
+      let metFor = ''
+      let caught = 0
+      const NEED = 8
+      const startedAt = Date.now()
+      let finished = false
+
+      const layer = $('hearts')
+      setInterval(() => {
+        if (document.hidden) return
+        const heart = document.createElement('span')
+        heart.className = 'heart'
+        heart.textContent = HEARTS[Math.floor(Math.random() * HEARTS.length)]
+        heart.style.left = Math.random() * 100 + 'vw'
+        heart.style.fontSize = 12 + Math.random() * 18 + 'px'
+        const duration = 7 + Math.random() * 6
+        heart.style.animationDuration = duration + 's'
+        layer.appendChild(heart)
+        setTimeout(() => heart.remove(), duration * 1000 + 250)
+      }, 460)
+
+      let titleClicks = 0
+      $('title').addEventListener('click', () => {
+        titleClicks += 1
+        if (titleClicks >= 5) {
+          titleClicks = 0
+          toast('喵，它也在帮我说 ❤️')
+          const cat = document.createElement('div')
+          cat.className = 'cat'
+          cat.textContent = '🐈'
+          document.body.appendChild(cat)
+          setTimeout(() => cat.remove(), 2600)
+        }
+      })
+
+      let audioCtx = null
+      let musicTimer = null
+      let musicOn = true
+      const NOTES = [523.25, 587.33, 659.25, 783.99, 880.0, 783.99, 659.25, 587.33]
+
+      function startMusic() {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext
+          if (!Ctx) return
+          audioCtx = new Ctx()
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume()
+        if (musicTimer) return
+        let step = 0
+        const play = () => {
+          const now = audioCtx.currentTime
+          const osc = audioCtx.createOscillator()
+          const gain = audioCtx.createGain()
+          osc.type = 'sine'
+          osc.frequency.value = NOTES[step % NOTES.length]
+          gain.gain.setValueAtTime(0.0001, now)
+          gain.gain.exponentialRampToValueAtTime(0.06, now + 0.06)
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.9)
+          osc.connect(gain).connect(audioCtx.destination)
+          osc.start(now)
+          osc.stop(now + 1)
+          step += 1
+        }
+        play()
+        musicTimer = setInterval(play, 620)
+      }
+
+      function stopMusic() {
+        if (musicTimer) clearInterval(musicTimer)
+        musicTimer = null
+      }
+
+      // 浏览器不允许无手势自动播放：第一次点击/按键就自动开始
+      $('sound').textContent = '♪ 音乐 开'
+      const unlockMusic = () => {
+        if (musicOn) startMusic()
+      }
+      for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+        document.addEventListener(type, unlockMusic, { once: true, passive: true })
+      }
+
+      $('sound').addEventListener('click', () => {
+        musicOn = !musicOn
+        $('sound').textContent = musicOn ? '♪ 音乐 开' : '♪ 音乐'
+        if (musicOn) startMusic()
+        else stopMusic()
+      })
+
+      function type(text, speed = 55) {
+        return new Promise((resolve) => {
+          const line = document.createElement('div')
+          line.className = 'line typed'
+          $('lines').appendChild(line)
+          let index = 0
+          const timer = setInterval(() => {
+            line.textContent = text.slice(0, index)
+            index += 1
+            if (index > text.length) {
+              clearInterval(timer)
+              line.classList.remove('typed')
+              line.textContent = text
+              resolve()
+            }
+          }, speed)
+        })
+      }
+
+      function toast(text) {
+        const node = $('toast')
+        node.textContent = text
+        node.classList.add('on')
+        setTimeout(() => node.classList.remove('on'), 1600)
+      }
+
+      function buttonRow(text, onClick) {
+        const row = document.createElement('div')
+        row.className = 'row'
+        const button = document.createElement('button')
+        button.className = 'yes'
+        button.textContent = text
+        button.addEventListener('click', () => {
+          row.remove()
+          if (onClick) onClick()
+        })
+        row.appendChild(button)
+        $('lines').appendChild(row)
+        return { row, button }
+      }
+
+      $('name').value = her
+      $('go').addEventListener('click', () => begin())
+      $('name').addEventListener('keydown', (event) => { if (event.key === 'Enter') begin() })
+
+      async function begin() {
+        her = ($('name').value || '').trim() || '你'
+        $('ask').classList.add('hidden')
+        $('title').textContent = '有些话，我攒了很久'
+        $('hint').textContent = ''
+        if (musicOn) startMusic()
+
+        await type('从第一次认真看你笑，我就知道完了。')
+        await type('后来每次想找你说话，都要先在心里排练半天。')
+        await type('今天不做排练了——')
+        await new Promise((r) => setTimeout(r, 320))
+        await meetStage()
+        await memoryStage()
+        await quizStage()
+        await catchStage()
+        await askStage()
+      }
+
+      function meetStage() {
+        return new Promise((resolve) => {
+          $('hint').textContent = '在说那句话之前，先回答我一个：我们认识多久了？'
+          const row = document.createElement('div')
+          row.className = 'row'
+          for (const option of ['几个月', '一两年', '很久很久了']) {
+            const button = document.createElement('button')
+            button.className = 'ghost'
+            button.textContent = option
+            button.addEventListener('click', () => {
+              metFor = option
+              row.remove()
+              resolve()
+            })
+            row.appendChild(button)
+          }
+          $('lines').appendChild(row)
+        })
+      }
+
+      const MEMORIES = [
+        { front: '我记得那天', back: '你笑的时候，我假装在看别的地方，其实一直在看你。' },
+        { front: '我记得那句话', back: '你说“你这个人真有意思”，我回去想了整晚。' },
+        { front: '我记得那次没说的话', back: '本来想说的，话到嘴边变成了“没事，路上小心”。' },
+      ]
+
+      function memoryStage() {
+        return new Promise((resolve) => {
+          $('hint').textContent = '翻开这三张，都是我偷偷记着的（点一下）'
+          const box = $('memories')
+          box.classList.remove('hidden')
+          box.textContent = ''
+          let opened = 0
+          for (const item of MEMORIES) {
+            const card = document.createElement('div')
+            card.className = 'mem'
+            const inner = document.createElement('div')
+            inner.className = 'inner'
+            const front = document.createElement('div')
+            front.className = 'face front'
+            front.textContent = item.front
+            const back = document.createElement('div')
+            back.className = 'face back'
+            back.textContent = item.back
+            inner.append(front, back)
+            card.appendChild(inner)
+            card.addEventListener('click', () => {
+              if (card.classList.contains('open')) return
+              card.classList.add('open')
+              opened += 1
+              if (opened === MEMORIES.length) {
+                setTimeout(() => {
+                  buttonRow('翻完了，继续 →', () => {
+                    box.classList.add('hidden')
+                    resolve()
+                  })
+                }, 500)
+              }
+            })
+            box.appendChild(card)
+          }
+        })
+      }
+
+      const QUESTIONS = [
+        { q: '我猜你最喜欢的天气是？', options: ['晴天', '下雨天', '有你在的每一天'], answer: 2 },
+        { q: '如果现在能许一个愿，我会许：', options: ['暴富', '变帅/变美', '她刚才对我笑了一下'], answer: 2 },
+        { q: '下面哪句话是真的？', options: ['我最近很忙', '我随便说说的', '这些字我改了很多遍'], answer: 2 },
+      ]
+
+      function quizStage() {
+        return new Promise((resolve) => {
+          $('hint').textContent = '再考你三道小题（骗你的，答案都只有一个）'
+          const box = $('quiz')
+          box.classList.remove('hidden')
+          box.textContent = ''
+          for (let i = 0; i < QUESTIONS.length; i += 1) {
+            const item = QUESTIONS[i]
+            const card = document.createElement('div')
+            card.className = 'quiz'
+            const title = document.createElement('b')
+            title.textContent = (i + 1) + '. ' + item.q
+            card.appendChild(title)
+            item.options.forEach((text, index) => {
+              const button = document.createElement('button')
+              button.textContent = text
+              button.addEventListener('click', () => {
+                if (index === item.answer) {
+                  button.classList.add('on')
+                  toast('对了 ❤️')
+                } else {
+                  toast('再想想？')
+                }
+              })
+              card.appendChild(button)
+            })
+            box.appendChild(card)
+          }
+          buttonRow('继续 →', () => {
+            box.classList.add('hidden')
+            resolve()
+          })
+        })
+      }
+
+      function catchStage() {
+        return new Promise((resolve) => {
+          $('hint').textContent = '帮我个忙：把掉下来的爱心接住（点它们）'
+          $('score').classList.remove('hidden')
+          caught = 0
+          $('score').textContent = '接住 ' + caught + ' / ' + NEED + ' 颗爱心'
+          const falling = $('falling')
+          falling.textContent = ''
+          const bail = setTimeout(() => {
+            clearInterval(timer)
+            $('score').textContent = '算了，爱心不重要，你才重要'
+            setTimeout(resolve, 700)
+          }, 20000)
+          const timer = setInterval(() => {
+            const heart = document.createElement('span')
+            heart.className = 'catch'
+            heart.textContent = '💗'
+            heart.style.left = Math.random() * 88 + 4 + 'vw'
+            const duration = 2.6 + Math.random() * 1.6
+            heart.style.animationDuration = duration + 's'
+            heart.addEventListener('click', () => {
+              if (heart.dataset.done) return
+              heart.dataset.done = '1'
+              heart.remove()
+              caught += 1
+              $('score').textContent = '接住 ' + caught + ' / ' + NEED + ' 颗爱心'
+              if (caught >= NEED) {
+                clearInterval(timer)
+                clearTimeout(bail)
+                falling.textContent = ''
+                $('score').textContent = '够了，' + her + '，谢谢你 ❤️'
+                setTimeout(resolve, 700)
+              }
+            })
+            falling.appendChild(heart)
+            setTimeout(() => heart.remove(), duration * 1000 + 200)
+          }, 520)
+        })
+      }
+
+      async function askStage() {
+        $('hint').textContent = ''
+        $('score').classList.add('hidden')
+        await type(her + '，做我女朋友好不好？', 80)
+        $('choices').classList.remove('hidden')
+      }
+
+      let dodges = 0
+      const no = $('no')
+      no.addEventListener('click', () => {
+        dodges += 1
+        const scale = Math.max(0.35, 1 - dodges * 0.14)
+        no.style.transform = 'scale(' + scale + ') translate(' + (Math.random() * 70 - 35) + 'px,' + (Math.random() * 30 - 15) + 'px)'
+        if (dodges === 2) $('result').textContent = '没关系，我可以等。'
+        if (dodges === 4) $('result').textContent = '真的可以等，等到你点头为止。'
+        if (dodges >= 5) {
+          no.style.opacity = '0'
+          setTimeout(() => no.classList.add('hidden'), 300)
+          $('result').textContent = '那我就当你还没想好，按钮我先收起来了。'
+        }
+      })
+
+      $('yes').addEventListener('click', () => finish())
+
+      function finish() {
+        if (finished) return
+        finished = true
+        const seconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+        const spent = seconds < 60 ? seconds + ' 秒' : Math.floor(seconds / 60) + ' 分 ' + (seconds % 60) + ' 秒'
+        $('choices').classList.add('hidden')
+        $('result').textContent = her + '，这句话我练了很多遍，今天终于说出口了。（你想了 ' + spent + '）'
+        const promise = $('promise')
+        promise.classList.remove('hidden')
+        promise.textContent = ''
+        const title = document.createElement('h2')
+        title.textContent = '那我说三条，你记着：'
+        const list = document.createElement('ul')
+        for (const text of ['以后你生气，我先闭嘴，不跟你讲道理。', '你发的消息，我尽量不让它掉到第二天。', '想见你的时候，我不再用“有空再说”当借口。']) {
+          const li = document.createElement('li')
+          li.textContent = text
+          list.appendChild(li)
+        }
+        const tail = document.createElement('p')
+        tail.style.color = '#ffd9ea'
+        tail.style.margin = '12px 0 0'
+        tail.textContent = metFor ? '我们认识' + metFor + '了，剩下的话，我想用很久很久慢慢说。' : '剩下的话，我想用很久很久慢慢说。'
+        promise.append(title, list, tail)
+
+        const meter = $('meter')
+        meter.classList.remove('hidden')
+        requestAnimationFrame(() => { meter.firstElementChild.style.width = '100%' })
+
+        $('tail').classList.remove('hidden')
+        confetti()
+        for (let i = 0; i < 30; i += 1) {
+          setTimeout(() => {
+            const heart = document.createElement('span')
+            heart.className = 'heart'
+            heart.textContent = HEARTS[i % HEARTS.length]
+            heart.style.left = Math.random() * 100 + 'vw'
+            heart.style.fontSize = 16 + Math.random() * 28 + 'px'
+            heart.style.animationDuration = 5 + Math.random() * 4 + 's'
+            layer.appendChild(heart)
+          }, i * 80)
+        }
+      }
+
+      $('copy').addEventListener('click', async () => {
+        const text = her + '，做我女朋友好不好？我不想再排练了，想听你亲口说一句好。'
+        try {
+          await navigator.clipboard.writeText(text)
+          toast('复制好了，去发给她吧')
+        } catch (error) {
+          toast('复制失败，长按手动复制吧')
+        }
+      })
+
+      $('again').addEventListener('click', () => location.reload())
+
+      function confetti() {
+        const box = document.createElement('div')
+        box.className = 'confetti'
+        document.body.appendChild(box)
+        const colors = ['#ff5c9e', '#ffd166', '#7bdff2', '#ff9ecd', '#fff1a8']
+        for (let i = 0; i < 130; i += 1) {
+          const bit = document.createElement('i')
+          bit.className = 'bit'
+          bit.style.left = Math.random() * 100 + 'vw'
+          bit.style.background = colors[i % colors.length]
+          bit.style.animationDuration = 2.2 + Math.random() * 2 + 's'
+          bit.style.animationDelay = Math.random() * 0.8 + 's'
+          box.appendChild(bit)
+        }
+        setTimeout(() => box.remove(), 6500)
+      }
+    </script>
+  </body>
+</html>
