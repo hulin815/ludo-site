@@ -1,0 +1,255 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>游戏大厅 · 一个人也能玩</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0d1f38; --panel: #16304f; --line: #2a4d7d; --ink: #eaf1fb; --muted: #9db3cf; --accent: #4a9eff; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 700px at 50% -10%, #1d4a80 0%, var(--bg) 60%); color: var(--ink); font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; padding: 28px 16px 40px; }
+      h1 { text-align: center; font-size: 26px; margin: 0 0 6px; letter-spacing: 1px; }
+      .sub { text-align: center; color: var(--muted); margin: 0 0 26px; font-size: 13px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; max-width: 760px; margin: 0 auto; }
+      .game { display: flex; flex-direction: column; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; text-decoration: none; color: var(--ink); transition: transform .15s ease, border-color .15s ease; }
+      .game:hover { transform: translateY(-3px); border-color: var(--accent); }
+      .game .icon { font-size: 34px; line-height: 1; }
+      .game .name { font-size: 18px; font-weight: 700; }
+      .game .desc { color: var(--muted); font-size: 12.5px; min-height: 38px; }
+      .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+      .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+      .tag.hot { border-color: var(--accent); color: var(--accent); }
+      @media (orientation: landscape) and (max-height: 620px) {
+        body { padding: 12px 16px 20px; }
+        h1 { font-size: 20px; margin-bottom: 2px; }
+        .sub { margin-bottom: 12px; }
+        .grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+        .game { padding: 12px; }
+        .game .desc { min-height: 0; font-size: 12px; }
+        .game .icon { font-size: 24px; }
+      }
+      .adminbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: center; max-width: 760px; margin: 0 auto 16px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 12px; background: rgba(255,255,255,.04); }
+      .adminbar .who { color: var(--accent); font-size: 13px; font-weight: 700; }
+      .adminbar input { width: 150px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: #0e2440; color: var(--ink); font: inherit; text-align: center; }
+      .adminbar button { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: #1d4272; color: var(--ink); font: inherit; cursor: pointer; }
+      .adminbar #admin-msg { color: var(--muted); font-size: 12px; }
+      .game:active { transform: translateY(1px) scale(.985); border-color: var(--accent); }
+      button:active { transform: scale(.96); }
+      .foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 30px; }
+      .foot code { background: #0f2744; padding: 1px 6px; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <h1>游戏大厅</h1>
+    <p class="sub">选一个游戏，自己先玩玩看；也可以建房和朋友联机</p>
+    <div class="adminbar" id="adminbar" hidden>
+      <span class="who">站长模式</span>
+      <input id="admin-token" maxlength="32" placeholder="输入口令" />
+      <button id="admin-save">保存口令</button>
+      <button id="admin-exit">退出</button>
+      <span id="admin-msg"></span>
+    </div>
+    <div class="grid" id="grid"></div>
+    <p class="foot"><button id="admin-link" style="background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer;margin-right:8px">站长模式</button>加新游戏：在 <code>GAMES</code> 数组里加一项 + 一个页面即可，房间系统是共用的。</p>
+
+    <script type="module">
+      // 游戏清单：以后加游戏只改这里（name/desc/icon/url/tags）
+      const GAMES = [
+        {
+          id: 'ludo',
+          name: '飞行棋',
+          icon: '✈️',
+          desc: '四色飞机、摇骰子起飞、撞机回场，2～4 人联机，也可以和机器人打。',
+          url: 'ludo.html',
+          solo: 'ludo.html?solo=1',
+          tags: ['2-4 人', '可加机器人', '联机'],
+        },
+        {
+          id: 'gomoku',
+          name: '五子棋',
+          icon: '⚫',
+          desc: '15×15 棋盘，黑先白后，横竖斜连成 5 子即胜，支持对机器人练习。',
+          url: 'gomoku.html',
+          solo: 'gomoku.html?solo=1',
+          tags: ['2 人', '对机器人', '联机'],
+        },
+        {
+          id: 'love',
+          name: '表白小游戏',
+          icon: '💌',
+          desc: '写下她的名字，三句话之后有个问题——答案只能选一个。',
+          url: 'love.html',
+          solo: 'love.html',
+          tags: ['单人', '送给她'],
+        },
+      ]
+
+      const grid = document.getElementById('grid')
+      const params = new URLSearchParams(location.search)
+      if (params.has('admin')) {
+        try { localStorage.setItem('ludo.adminMode', '1') } catch (error) {}
+      }
+      const admin = params.has('admin') || (function () {
+        try { return localStorage.getItem('ludo.adminMode') === '1' } catch (error) { return false }
+      })()
+      let showHidden = false
+      let hiddenSet = new Set()
+
+      function makeCard(game, isHidden) {
+        const card = document.createElement('div')
+        card.className = 'game'
+        if (isHidden) card.style.opacity = '.45'
+
+        const link = document.createElement('a')
+        link.href = game.url
+        link.style.color = 'inherit'
+        link.style.textDecoration = 'none'
+        link.style.display = 'flex'
+        link.style.flexDirection = 'column'
+        link.style.gap = '6px'
+
+        const icon = document.createElement('div')
+        icon.className = 'icon'
+        icon.textContent = game.icon
+        const name = document.createElement('div')
+        name.className = 'name'
+        name.textContent = game.name
+        const desc = document.createElement('div')
+        desc.className = 'desc'
+        desc.textContent = game.desc
+        const tags = document.createElement('div')
+        tags.className = 'tags'
+        for (const text of game.tags || []) {
+          const tag = document.createElement('span')
+          tag.className = 'tag'
+          tag.textContent = text
+          tags.appendChild(tag)
+        }
+        link.append(icon, name, desc, tags)
+
+        const solo = document.createElement('button')
+        solo.className = 'tag hot'
+        solo.textContent = '自己先玩 →'
+        solo.style.cursor = 'pointer'
+        solo.style.background = 'transparent'
+        solo.addEventListener('click', (event) => {
+          event.preventDefault()
+          location.href = game.solo
+        })
+        link.appendChild(solo)
+        card.appendChild(link)
+
+        if (admin) {
+          const bar = document.createElement('div')
+          bar.style.display = 'flex'
+          bar.style.gap = '6px'
+          bar.style.marginTop = '4px'
+          const button = document.createElement('button')
+          button.className = 'tag'
+          button.style.cursor = 'pointer'
+          button.style.background = 'transparent'
+          button.textContent = isHidden ? '恢复上架' : '✕ 下架这个游戏'
+          button.addEventListener('click', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            toggleGame(game.id, !isHidden)
+          })
+          bar.appendChild(button)
+          card.appendChild(bar)
+        }
+        return card
+      }
+
+      function currentToken() {
+        try { return localStorage.getItem('ludo.admin') || '' } catch (error) { return '' }
+      }
+
+      function showAdminBar(message) {
+        const bar = document.getElementById('adminbar')
+        if (!bar) return
+        bar.hidden = false
+        const msg = document.getElementById('admin-msg')
+        if (msg && message) msg.textContent = message
+        const input = document.getElementById('admin-token')
+        if (input && !input.value && currentToken()) input.value = currentToken()
+      }
+
+      async function toggleGame(id, hide) {
+        const token = currentToken()
+        if (!token) {
+          showAdminBar('先在下面填一次口令，再来点下架')
+          return
+        }
+        const body = token ? (hide ? { token, hide: [id] } : { token, show: [id] }) : {}
+        const response = await fetch('ludo/api/games', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }).catch(() => null)
+        const data = response ? await response.json().catch(() => ({})) : {}
+        if (!data || !data.ok) {
+          try { localStorage.removeItem('ludo.admin') } catch (error) {}
+          alert((data && data.error) || '口令不对，或者服务端没开')
+          return
+        }
+        hiddenSet = new Set(data.hidden || [])
+        render()
+      }
+
+      function render() {
+        grid.textContent = ''
+        for (const game of GAMES) {
+          const isHidden = hiddenSet.has(game.id)
+          if (isHidden && !(admin && showHidden)) continue
+          grid.appendChild(makeCard(game, isHidden))
+        }
+        if (admin && hiddenSet.size && !showHidden) {
+          const more = document.createElement('button')
+          more.className = 'tag'
+          more.textContent = '显示已下架的 ' + hiddenSet.size + ' 个'
+          more.style.cursor = 'pointer'
+          more.style.background = 'transparent'
+          more.addEventListener('click', () => {
+            showHidden = true
+            render()
+          })
+          grid.appendChild(more)
+        }
+      }
+
+      const adminBar = document.getElementById('adminbar')
+      if (adminBar) {
+        if (admin && !currentToken()) showAdminBar('')
+        document.getElementById('admin-save').addEventListener('click', () => {
+          const value = (document.getElementById('admin-token').value || '').trim()
+          try { localStorage.setItem('ludo.admin', value) } catch (error) {}
+          document.getElementById('admin-msg').textContent = value ? '口令已保存，可以点下架了' : '口令是空的'
+        })
+        document.getElementById('admin-exit').addEventListener('click', () => {
+          try { localStorage.removeItem('ludo.adminMode') } catch (error) {}
+          location.href = location.pathname
+        })
+        if (!admin) adminBar.hidden = true
+      }
+
+      const adminLink = document.getElementById('admin-link')
+      if (adminLink) {
+        adminLink.textContent = admin ? '退出站长模式' : '站长模式'
+        adminLink.addEventListener('click', () => {
+          try {
+            if (admin) localStorage.removeItem('ludo.adminMode')
+            else localStorage.setItem('ludo.adminMode', '1')
+          } catch (error) {}
+          location.href = location.pathname
+        })
+      }
+
+      fetch('ludo/api/games')
+        .then((response) => response.json())
+        .then((data) => { hiddenSet = new Set((data && data.hidden) || []) })
+        .catch(() => {})
+        .then(() => render())
+    </script>
+  </body>
+</html>
+
