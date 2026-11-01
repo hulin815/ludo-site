@@ -1,0 +1,429 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>五子棋 · 双人联机</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0f2440; --panel: #17365f; --line: #2a4d7d; --ink: #eaf1fb; --muted: #9db3cf; --accent: #4a9eff; --red: #e5484d; --blue: #3a7bd5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
+      h1 { font-size: 18px; margin: 0; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; width: min(560px, 100%); }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      input { flex: 1 1 140px; min-width: 0; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: #0e2a4c; color: var(--ink); font: inherit; }
+      button { padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line); background: #1d4272; color: var(--ink); font: inherit; cursor: pointer; }
+      button.primary { background: var(--accent); border-color: transparent; color: #05203f; font-weight: 700; }
+      button:disabled { opacity: .45; cursor: default; }
+      #status { color: var(--muted); min-height: 22px; }
+      button:active { transform: scale(.96); }
+      .ripple { fill: none; stroke-width: 3; animation: ripple .7s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+      @keyframes ripple { 0% { transform: scale(.3); opacity: .95; } 100% { transform: scale(2.1); opacity: 0; } }
+      .last-move { animation: breathe 1.6s ease-in-out infinite; }
+      @keyframes breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+      .win-line { stroke-dasharray: 900; stroke-dashoffset: 900; animation: draw 700ms ease-out forwards; }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+      .flash { animation: flash .5s ease-out; }
+      @keyframes flash { 0% { opacity: .55; } 100% { opacity: 0; } }
+      #board circle { transition: r .08s ease; }
+      #board { width: min(92vw, 560px); height: auto; display: block; margin: 0 auto; touch-action: manipulation; max-height: 76vh; }
+      @media (orientation: landscape) and (max-height: 600px) { #board { width: auto; height: 78vh; } }
+      .net { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+      .net i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+      .net.on i { background: #2fa84f; }
+      .who { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+      .who b { color: var(--ink); }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <h1>五子棋 · 双人联机</h1>
+    <div class="net" style="position:fixed;right:12px;bottom:12px;z-index:9"><button id="sound" style="padding:6px 12px;font-size:12px">♪ 音效 开</button></div>
+    <div class="card row">
+      <input id="name" maxlength="12" placeholder="你的名字" />
+      <button class="primary" id="create">创建房间</button>
+      <input id="code" maxlength="4" placeholder="房间号" style="flex: 0 1 100px" />
+      <button id="join">加入</button>
+      <button id="leave" hidden>离开房间</button>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content: space-between">
+        <div class="net" id="net"><i></i><span id="net-text">连接中…</span></div>
+        <div class="net"><span id="room-text"></span></div>
+      </div>
+      <div class="who" id="who"></div>
+      <div id="status">等下对手，房主点“开始”就能下。</div>
+      <svg id="board" viewBox="0 0 560 560" aria-label="五子棋棋盘"></svg>
+      <div class="row" style="justify-content: center; margin-top: 8px">
+        <button class="primary" id="start" hidden>开始</button>
+        <button id="again" hidden>再来一局</button>
+      </div>
+    </div>
+    <div class="card" style="color: var(--muted); font-size: 13px">
+      玩法：黑先白后，横、竖、斜任意方向连成 5 子即胜。<a href="./">← 回飞行棋</a>
+    </div>
+
+    <script type="module">
+      const SIZE = 15
+      const PAD = 30
+      const SPAN = 560 - PAD * 2
+      const STEP = SPAN / (SIZE - 1)
+
+      const state = { sid: 'g-' + Math.random().toString(36).slice(2, 10), cid: 'g-' + Math.random().toString(36).slice(2, 10), name: '', room: null, queue: [], seq: 0, alive: true, fails: 0, controller: null, pending: null }
+
+      const $ = (id) => document.getElementById(id)
+      const load = (key, fallback) => { try { return localStorage.getItem(key) || fallback } catch { return fallback } }
+
+      state.name = load('gomoku.name', '')
+      $('name').value = state.name
+
+
+      // 网络慢的时候，点完立刻给个反馈，别让人以为没点上
+      function joiningFeedback(text) {
+        const tip = document.getElementById('tip') || document.getElementById('hint') || document.getElementById('status')
+        if (tip) tip.textContent = text
+        const box = document.getElementById('entry') || document.getElementById('waiting')
+        if (box) box.style.opacity = '0.6'
+        setTimeout(() => {
+          if (box) box.style.opacity = '1'
+        }, 1200)
+      }
+
+      // 音效（WebAudio 现场合成，不需要音频文件）
+      let audioCtx = null
+      // 每次进来都默认开着
+      let soundOn = true
+      function sfx(kind) {
+        if (!soundOn) return
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+          if (audioCtx.state === 'suspended') audioCtx.resume()
+          const now = audioCtx.currentTime
+          const osc = audioCtx.createOscillator()
+          const gain = audioCtx.createGain()
+          if (kind === 'win') {
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(523.25, now)
+            osc.frequency.setValueAtTime(659.25, now + 0.14)
+            osc.frequency.setValueAtTime(783.99, now + 0.28)
+            gain.gain.setValueAtTime(0.09, now)
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7)
+          } else if (kind === 'bad') {
+            osc.type = 'square'
+            osc.frequency.setValueAtTime(170, now)
+            gain.gain.setValueAtTime(0.05, now)
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+          } else {
+            osc.type = 'triangle'
+            osc.frequency.setValueAtTime(560, now)
+            osc.frequency.exponentialRampToValueAtTime(250, now + 0.09)
+            gain.gain.setValueAtTime(0.1, now)
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14)
+          }
+          osc.connect(gain).connect(audioCtx.destination)
+          osc.start(now)
+          osc.stop(now + 0.8)
+        } catch (error) {
+          /* 静音也能玩 */
+        }
+      }
+
+      function send(action) {
+        state.queue.push({ ...action, n: ++state.seq })
+        if (state.controller) state.controller.abort()
+      }
+
+      function setNet(text, on) {
+        $('net-text').textContent = text
+        $('net').classList.toggle('on', !!on)
+      }
+
+      async function syncOnce() {
+        state.controller = new AbortController()
+        const body = { sid: state.sid, cid: state.cid, name: state.name, actions: state.queue, wait: true }
+        state.queue = []
+        let response
+        try {
+          response = await fetch('ludo/api/sync', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: state.controller.signal })
+        } catch (error) {
+          if (error.name === 'AbortError' && state.queue.length) return
+          throw error
+        }
+        if (!response.ok) throw new Error('http ' + response.status)
+        const data = await response.json()
+        state.fails = 0
+        setNet('已连接', true)
+        for (const message of data.messages || []) {
+          if (message.t === 'room') applyRoom(message.room)
+          if (message.t === 'error') {
+            $('status').textContent = message.message || '出错了'
+            state.pending = null
+            render()
+          }
+        }
+      }
+
+      async function loop() {
+        while (state.alive) {
+          try {
+            await syncOnce()
+          } catch (error) {
+            state.fails += 1
+            setNet('断线重连中…', false)
+            await new Promise((resolve) => setTimeout(resolve, Math.min(4000, 400 * state.fails)))
+          }
+        }
+      }
+
+      function applyRoom(room) {
+        state.room = room
+        state.youColor = room && room.you ? room.you.color : -1
+        const game = room && room.game
+        // 服务器已经认了这一步（或轮到对手了）→ 撤掉本地那颗“待确认”
+        if (game && state.turnsSeen !== undefined && game.turns > state.turnsSeen) {
+          const lastMine = game.last && game.last.color === state.youColor
+          sfx(lastMine ? 'place' : 'place')
+          if (!lastMine) $('status').textContent = '对手落子了'
+        }
+        if (game) state.turnsSeen = game.turns
+        if (game && game.over && state.lastOver !== true) {
+          state.lastOver = true
+          sfx(game.winner === state.youColor ? 'win' : 'bad')
+        }
+        if (game && !game.over) state.lastOver = false
+        if (state.pending && game) {
+          const stone = game.board && game.board[state.pending.y] ? game.board[state.pending.y][state.pending.x] : -1
+          if (stone !== -1 || game.over || game.turn !== state.youColor) state.pending = null
+        }
+        if (!game) state.pending = null
+        render()
+      }
+
+      function render() {
+        const room = state.room
+        const game = room && room.game
+        $('room-text').textContent = room ? '房间 ' + room.id : ''
+        $('leave').hidden = !room
+        $('start').hidden = !(room && room.phase === 'lobby' && room.you && room.you.isHost)
+        $('again').hidden = !(room && room.phase === 'over' && room.you && room.you.isHost)
+
+        const who = $('who')
+        who.textContent = ''
+        if (room) {
+          room.members.forEach((member) => {
+            const span = document.createElement('span')
+            const dot = document.createElement('span')
+            dot.className = 'dot'
+            dot.style.background = member.color === 0 ? '#111' : '#fff'
+            span.appendChild(dot)
+            span.appendChild(document.createTextNode(' ' + member.name + (room.you && member.color === room.you.color ? '（你）' : '') + (member.isBot ? ' · 机器人' : '')))
+            who.appendChild(span)
+          })
+        }
+
+        if (!room) $('status').textContent = '建个房间，把房号发给朋友。'
+        else if (room.phase === 'lobby') $('status').textContent = '房主点“开始”后，黑棋先走。'
+        else if (game && game.over) $('status').textContent = game.winner >= 0 ? (game.winner === (room.you && room.you.color) ? '你赢了！' : '对手连成 5 子，输了。') : '棋盘满了，平局。'
+        else if (game) $('status').textContent = room.you && game.turn === room.you.color ? '轮到你落子' : '等对手落子…'
+
+        drawBoard(room, game)
+      }
+
+      function drawBoard(room, game) {
+        const svg = $('board')
+        svg.textContent = ''
+        const board = game && game.board ? game.board : null
+        const winning = new Set((game && game.winLine ? game.winLine : []).map(([x, y]) => x + ',' + y))
+        const last = game && game.last ? game.last.x + ',' + game.last.y : ''
+
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+        bg.setAttribute('x', 8); bg.setAttribute('y', 8); bg.setAttribute('width', 544); bg.setAttribute('height', 544); bg.setAttribute('rx', 12)
+        bg.setAttribute('fill', '#e8c98a')
+        svg.appendChild(bg)
+
+        for (let i = 0; i < SIZE; i += 1) {
+          const x = PAD + i * STEP
+          for (const horizontal of [true, false]) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+            line.setAttribute('x1', horizontal ? PAD : x)
+            line.setAttribute('y1', horizontal ? x : PAD)
+            line.setAttribute('x2', horizontal ? 560 - PAD : x)
+            line.setAttribute('y2', horizontal ? x : 560 - PAD)
+            line.setAttribute('stroke', 'rgba(70,45,10,.55)')
+            line.setAttribute('stroke-width', 1.2)
+            svg.appendChild(line)
+          }
+        }
+
+        const pending = state.pending
+        for (let gy = 0; gy < SIZE; gy += 1) {
+          for (let gx = 0; gx < SIZE; gx += 1) {
+            const value = board ? board[gy][gx] : -1
+            const cx = PAD + gx * STEP
+            const cy = PAD + gy * STEP
+            const hit = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+            hit.setAttribute('cx', cx); hit.setAttribute('cy', cy); hit.setAttribute('r', STEP * 0.46)
+            hit.setAttribute('fill', 'transparent')
+            hit.style.cursor = 'pointer'
+            hit.addEventListener('click', () => onCell(gx, gy))
+            svg.appendChild(hit)
+            if (value === -1) continue
+            const stone = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+            stone.setAttribute('cx', cx); stone.setAttribute('cy', cy); stone.setAttribute('r', STEP * 0.42)
+            stone.setAttribute('fill', value === 0 ? '#16181d' : '#f7f7fa')
+            stone.setAttribute('stroke', winning.has(gx + ',' + gy) ? '#e5484d' : value === 0 ? '#000' : '#9aa3b2')
+            stone.setAttribute('stroke-width', winning.has(gx + ',' + gy) ? 3 : 1.2)
+            if (last === gx + ',' + gy) { stone.setAttribute('stroke', '#4a9eff'); stone.setAttribute('stroke-width', 2.5) }
+            svg.appendChild(stone)
+          }
+        }
+
+        // 最新一手：涟漪 + 胜利连线
+        if (last && state.animLast !== last) {
+          state.animLast = last
+          const parts = last.split(',')
+          const lx = PAD + Number(parts[0]) * STEP
+          const ly = PAD + Number(parts[1]) * STEP
+          const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+          ring.setAttribute('class', 'ripple')
+          ring.setAttribute('cx', lx)
+          ring.setAttribute('cy', ly)
+          ring.setAttribute('r', STEP * 0.42)
+          ring.setAttribute('stroke', '#4a9eff')
+          svg.appendChild(ring)
+          setTimeout(() => ring.remove(), 800)
+        }
+        if (game && game.winLine && game.winLine.length >= 5) {
+          const points = game.winLine.map(([gx, gy]) => (PAD + gx * STEP) + ',' + (PAD + gy * STEP)).join(' ')
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline')
+          line.setAttribute('points', points)
+          line.setAttribute('fill', 'none')
+          line.setAttribute('stroke', '#ffd166')
+          line.setAttribute('stroke-width', 5)
+          line.setAttribute('stroke-linecap', 'round')
+          line.setAttribute('opacity', '0.9')
+          line.setAttribute('class', 'win-line')
+          svg.appendChild(line)
+        }
+
+        // 本地先落的那一颗：半透明，等服务器确认（被拒会消失）
+        if (pending) {
+          const px = PAD + pending.x * STEP
+          const py = PAD + pending.y * STEP
+          const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+          ghost.setAttribute('cx', px)
+          ghost.setAttribute('cy', py)
+          ghost.setAttribute('r', STEP * 0.42)
+          ghost.setAttribute('fill', state.youColor === 0 ? '#16181d' : '#f7f7fa')
+          ghost.setAttribute('opacity', '0.55')
+          ghost.setAttribute('stroke', '#4a9eff')
+          ghost.setAttribute('stroke-width', 2)
+          ghost.setAttribute('stroke-dasharray', '4 3')
+          svg.appendChild(ghost)
+        }
+      }
+
+      function onCell(x, y) {
+        const room = state.room
+        if (!room || room.phase !== 'playing' || !room.you) return
+        if (!room.game || room.game.over || room.game.turn !== room.you.color) return
+        if (room.game.board[y][x] !== -1) return
+        if (state.pending) return
+        // 先本地落子（灰棋子），服务器确认后变成实心，被拒就撤掉
+        state.pending = { x, y }
+        sfx('place')
+        drawBoard(room, room.game)
+        $('status').textContent = '已落子，等对手…'
+        send({ t: 'place', x, y })
+      }
+
+      $('name').addEventListener('input', () => {
+        state.name = $('name').value.trim()
+        try { localStorage.setItem('gomoku.name', state.name) } catch { /* ignore */ }
+      })
+      $('create').addEventListener('click', () => {
+        $('status').textContent = '正在建房…'
+        send({ t: 'createRoom', game: 'gomoku' })
+      })
+      $('join').addEventListener('click', () => {
+        const id = $('code').value.trim().toUpperCase()
+        if (id) {
+          $('status').textContent = '正在加入房间 ' + id + '…'
+          send({ t: 'joinRoom', roomId: id })
+        }
+      })
+      $('start').addEventListener('click', () => send({ t: 'start' }))
+      $('again').addEventListener('click', () => send({ t: 'restart' }))
+      $('leave').addEventListener('click', () => send({ t: 'leaveRoom' }))
+
+
+      // 关页面/退回时告诉服务器“我走了”，房间立刻回收
+      function leaveOnUnload() {
+        if (!state.room) return
+        try {
+          const body = JSON.stringify({ sid: state.sid, cid: state.cid, name: state.name, actions: [{ t: 'leaveRoom', n: ++state.seq }], wait: false })
+          if (navigator.sendBeacon) navigator.sendBeacon('ludo/api/sync', new Blob([body], { type: 'application/json' }))
+          else fetch('ludo/api/sync', { method: 'POST', body, headers: { 'content-type': 'application/json' }, keepalive: true })
+        } catch (error) {
+          /* 尽力而为 */
+        }
+      }
+      window.addEventListener('pagehide', leaveOnUnload)
+      window.addEventListener('beforeunload', leaveOnUnload)
+
+      const unlockAudio = () => {
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+          if (audioCtx.state === 'suspended') audioCtx.resume()
+        } catch (error) {
+          /* 不支持就算了 */
+        }
+      }
+      for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+        document.addEventListener(type, unlockAudio, { once: true, passive: true })
+      }
+
+      const soundButton = document.getElementById('sound')
+      if (soundButton) {
+        soundButton.textContent = soundOn ? '♪ 音效 开' : '♪ 音效 关'
+        soundButton.addEventListener('click', () => {
+          soundOn = !soundOn
+          soundButton.textContent = soundOn ? '♪ 音效 开' : '♪ 音效 关'
+          try { localStorage.setItem('gomoku.sound', soundOn ? '1' : '0') } catch (error) {}
+          if (soundOn) sfx('place')
+        })
+      }
+
+      send({ t: 'hello' })
+      // ?solo=1：自己先玩，建房 + 开局（空位补机器人）
+      if (new URLSearchParams(location.search).get('solo') === '1') {
+        send({ t: 'createRoom', game: 'gomoku' })
+        send({ t: 'start' })
+      }
+      loop()
+    </script>
+    <script>
+    // 手机端：第一次点屏幕就尝试全屏并锁横屏（浏览器要求必须先有手势）
+    (function () {
+      if (!('ontouchstart' in window)) return
+      var tried = false
+      window.__goLandscape = function (force) {
+        if (tried && !force) return
+        tried = true
+        var el = document.documentElement
+        var jobs = []
+        try {
+          if (el.requestFullscreen && !document.fullscreenElement) jobs.push(el.requestFullscreen())
+        } catch (error) {}
+        try {
+          if (screen.orientation && screen.orientation.lock) jobs.push(screen.orientation.lock('landscape'))
+        } catch (error) {}
+        if (jobs.length) Promise.all(jobs).catch(function () {})
+      }
+      document.addEventListener('pointerdown', function () { window.__goLandscape(false) }, { once: true })
+    })()
+  </script>
+</body>
+</html>
+
